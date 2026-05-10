@@ -7,6 +7,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db } from './lib/firebase';
 import { useState } from 'react';
 import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 function AppContent() {
   const { user, profile, loading } = useAuth();
@@ -78,6 +79,7 @@ export default function App() {
     <AuthProvider>
       <AppContent />
       <Analytics />
+      <SpeedInsights />
     </AuthProvider>
   );
 }
