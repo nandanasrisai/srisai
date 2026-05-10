@@ -1,0 +1,119 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // -------------------------------------------------------------------------
+    // GLOBAL HELPERS
+    // -------------------------------------------------------------------------
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Role check - in a real app, this should be a trusted doc check
+    function isAdmin() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'authority';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // -------------------------------------------------------------------------
+    // ENTITY VALIDATION BLUEPRINTS
+    // -------------------------------------------------------------------------
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) 
+        && data.keys().size() >= 3
+        && data.uid is string && data.uid.size() <= 128
+        && data.uid == request.auth.uid // Identity Integrity
+        && data.email is string && data.email.size() <= 256
+        && data.role in ['student', 'authority'];
+    }
+
+    function isValidComplaint(data) {
+      return data.keys().hasAll(['studentId', 'studentEmail', 'studentName', 'title', 'category', 'status', 'createdAt', 'isAnonymous'])
+        && data.keys().size() >= 8
+        && data.studentId is string && data.studentId.size() <= 128
+        && data.studentId == request.auth.uid // Identity Integrity
+        && data.studentEmail is string && data.studentEmail.size() <= 256
+        && data.title is string && data.title.size() <= 100
+        && data.isAnonymous is bool
+        && data.category in ["Academics", "Hostel Facilities", "Transportation", "IT Services", "General Feedback"]
+        && data.status in ['pending', 'in-progress', 'resolved'];
+    }
+
+    // -------------------------------------------------------------------------
+    // CORE RULES
+    // -------------------------------------------------------------------------
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      
+      allow create: if isOwner(userId) 
+        && isValidId(userId)
+        && isValidUser(incoming());
+        
+      allow update: if isOwner(userId) 
+        && (
+          // Action: Sync Profile
+          (incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'role'])
+          && incoming().uid == existing().uid
+          && incoming().role in ['student', 'authority'])
+        );
+    }
+
+    // Complaints
+    match /complaints/{complaintId} {
+      allow get: if isSignedIn() && (existing().studentId == request.auth.uid || isAdmin());
+      // Secure list query enforcement
+      allow list: if isSignedIn() && (resource.data.studentId == request.auth.uid || isAdmin());
+      
+      allow create: if isSignedIn() 
+        && isValidId(complaintId)
+        && isValidComplaint(incoming())
+        && incoming().status == 'pending'
+        && incoming().createdAt == request.time;
+
+      allow update: if isSignedIn() && (
+        // Action: Resolve (Authority Only)
+        (isAdmin() 
+          && incoming().status in ['in-progress', 'resolved']
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'authorityComment', 'updatedAt'])
+          && incoming().updatedAt == request.time
+          && existing().status != 'resolved' // Terminal State Locking
+        )
+        ||
+        // Action: Edit (Student Only - while pending)
+        (isOwner(existing().studentId)
+          && existing().status == 'pending'
+          && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'isAnonymous', 'updatedAt'])
+          && incoming().updatedAt == request.time
+          && incoming().studentId == existing().studentId // Immortality check
+        )
+      );
+      
+      allow delete: if false; // Locked
+    }
+  }
+}
