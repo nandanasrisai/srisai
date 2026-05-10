@@ -1,0 +1,48 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information and role.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["student", "authority"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Complaint": {
+      "title": "Complaint",
+      "description": "A complaint raised by a student.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentEmail": { "type": "string", "format": "email" },
+        "studentName": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string", "enum": ["Academics", "Hostel Facilities", "Transportation", "IT Services", "General Feedback"] },
+        "isAnonymous": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pending", "in-progress", "resolved"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "authorityComment": { "type": "string" }
+      },
+      "required": ["studentId", "studentEmail", "title", "category", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile data including roles."
+    },
+    "/complaints/{complaintId}": {
+      "schema": "Complaint",
+      "description": "List of student complaints."
+    }
+  }
+}
